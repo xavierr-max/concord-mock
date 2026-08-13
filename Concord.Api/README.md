@@ -2,10 +2,16 @@
 
 ## Desenvolvimento
 
-1. Copie `.env.example` para `../.env` caso queira alterar as credenciais padrão.
+1. Copie o `.env.example` da raiz para `.env` e substitua o placeholder por uma senha local aleatória.
 2. Execute `docker compose up -d` na raiz do repositório para iniciar o PostgreSQL.
-3. Configure opcionalmente `ConnectionStrings__ConcordDatabase`; ela sobrepõe `appsettings.json`.
-4. Execute `dotnet ef database update` e `dotnet run`.
+3. No diretório `Concord.Api`, configure os segredos locais e aplique as migrations:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5433;Database=<db>;Username=<user>;Password=<senha-local>"
+dotnet user-secrets set "Jwt:Key" "<chave-aleatoria-com-ao-menos-32-caracteres>"
+dotnet ef database update
+dotnet run
+```
 
 Em Development, o Swagger está em `/swagger` e a saúde da aplicação em `/health`.
 
@@ -14,11 +20,11 @@ Em Development, o Swagger está em `/swagger` e a saúde da aplicação em `/hea
 `appsettings.json` contém apenas configurações não sensíveis. Em desenvolvimento, a conexão e a chave JWT devem ser configuradas com .NET User Secrets:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:ConcordDatabase" "<connection-string-local>"
-dotnet user-secrets set "Jwt:SigningKey" "<chave-aleatoria-com-ao-menos-32-caracteres>"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<connection-string-local>"
+dotnet user-secrets set "Jwt:Key" "<chave-aleatoria-com-ao-menos-32-caracteres>"
 ```
 
-Em produção, use um secret manager ou variáveis de ambiente para `Jwt__SigningKey` e `ConnectionStrings__ConcordDatabase`. Configure também `Jwt__Issuer`, `Jwt__Audience` e `Cors__AllowedOrigins__0` conforme o ambiente.
+Em produção, use um secret manager ou variáveis de ambiente para `Jwt__Key` e `ConnectionStrings__DefaultConnection`. Configure também `Jwt__Issuer`, `Jwt__Audience` e `Cors__AllowedOrigins__0` conforme o ambiente.
 
 ## Autenticação
 

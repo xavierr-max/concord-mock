@@ -16,18 +16,18 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("ConcordDatabase")
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "A connection string 'ConcordDatabase' precisa ser configurada.");
+                "A connection string 'DefaultConnection' precisa ser configurada.");
 
         services.AddDbContext<ConcordDbContext>(options =>
             options.UseNpgsql(connectionString));
 
         var jwtSettings = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException("A seção Jwt precisa ser configurada.");
-        if (jwtSettings.SigningKey.Length < 32)
+        if (jwtSettings.Key.Length < 32)
         {
-            throw new InvalidOperationException("Jwt:SigningKey precisa ter ao menos 32 caracteres.");
+            throw new InvalidOperationException("Jwt:Key precisa ter ao menos 32 caracteres.");
         }
 
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
@@ -75,7 +75,7 @@ public static class ServiceCollectionExtensions
                     ValidateAudience = true,
                     ValidAudience = jwtSettings.Audience,
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SigningKey)),
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };

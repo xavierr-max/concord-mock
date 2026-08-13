@@ -23,7 +23,7 @@ public sealed class JwtTokenService(IOptions<JwtSettings> settings) : IJwtTokenS
             new Claim(JwtRegisteredClaimNames.Email, user.Email ?? string.Empty)
         };
         var credentials = new SigningCredentials(
-            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.SigningKey)),
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Key)),
             SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(_settings.Issuer, _settings.Audience, claims,
             expires: expiresAt.UtcDateTime, signingCredentials: credentials);
