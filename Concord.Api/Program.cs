@@ -42,11 +42,13 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+if (app.Environment.IsDevelopment()) app.UseStaticFiles();
 app.UseCors(CorsConfiguration.PolicyName);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
+app.MapHub<VoiceHub>("/hubs/voice");
 app.MapHealthChecks("/health");
 
 app.Run();

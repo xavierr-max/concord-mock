@@ -16,4 +16,5 @@ public sealed class ApplicationUser : IdentityUser<Guid>
     public ICollection<ServerMember> ServerMemberships { get; } = new List<ServerMember>();
     public ICollection<ServerInvite> CreatedServerInvites { get; } = new List<ServerInvite>();
     public ICollection<Message> Messages { get; } = new List<Message>();
+    public ICollection<ChannelReadState> ChannelReadStates { get; } = new List<ChannelReadState>();
 }

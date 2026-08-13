@@ -79,6 +79,95 @@ public sealed class ChannelService(
         return ChannelOperationStatus.Success;
     }
 
+    public async Task<ChannelOperationStatus> MarkAsReadAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken)
+    {
+        var access = await GetChannelAccessAsync(channelId, userId, cancellationToken);
+        if (access != ChannelOperationStatus.Success) return access;
+
+        var latestMessage = await dbContext.Messages.AsNoTracking()
+            .Where(message => message.ChannelId == channelId)
+            .OrderByDescending(message => message.CreatedAt)
+            .ThenByDescending(message => message.Id)
+            .Select(message => new { message.Id, message.CreatedAt })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        // An empty channel has no message cursor to persist and is already fully read.
+        if (latestMessage is null) return ChannelOperationStatus.Success;
+
+        var state = await dbContext.ChannelReadStates.FindAsync(
+            [channelId, userId], cancellationToken);
+        if (state is null)
+        {
+            dbContext.ChannelReadStates.Add(new ChannelReadState
+            {
+                ChannelId = channelId,
+                UserId = userId,
+                LastReadMessageId = latestMessage.Id,
+                UpdatedAt = DateTimeOffset.UtcNow
+            });
+        }
+        else
+        {
+            var currentCreatedAt = await dbContext.Messages.AsNoTracking()
+                .Where(message => message.Id == state.LastReadMessageId)
+                .Select(message => message.CreatedAt)
+                .SingleAsync(cancellationToken);
+            if (currentCreatedAt <= latestMessage.CreatedAt)
+            {
+                state.LastReadMessageId = latestMessage.Id;
+                state.UpdatedAt = DateTimeOffset.UtcNow;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return ChannelOperationStatus.Success;
+    }
+
+    public async Task<ChannelOperationResult<UnreadCountResponse>> GetUnreadCountAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken)
+    {
+        var access = await GetChannelAccessAsync(channelId, userId, cancellationToken);
+        if (access != ChannelOperationStatus.Success) return new(access);
+
+        var lastReadAt = await dbContext.ChannelReadStates.AsNoTracking()
+            .Where(state => state.ChannelId == channelId && state.UserId == userId)
+            .Select(state => (DateTimeOffset?)state.LastReadMessage.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var count = await dbContext.Messages.AsNoTracking()
+            .Where(message => message.ChannelId == channelId
+                && message.AuthorId != userId
+                && !message.IsDeleted
+                && (lastReadAt == null || message.CreatedAt > lastReadAt))
+            .LongCountAsync(cancellationToken);
+        return new(ChannelOperationStatus.Success, new UnreadCountResponse(count));
+    }
+
+    public async Task<ChannelOperationResult<UnreadMentionCountResponse>> GetUnreadMentionCountAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken)
+    {
+        var access = await GetChannelAccessAsync(channelId, userId, cancellationToken);
+        if (access != ChannelOperationStatus.Success) return new(access);
+
+        // The endpoint is intentionally stable while mention persistence is introduced later.
+        return new(ChannelOperationStatus.Success, new UnreadMentionCountResponse(0));
+    }
+
+    private async Task<ChannelOperationStatus> GetChannelAccessAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken)
+    {
+        var serverId = await dbContext.Channels.AsNoTracking()
+            .Where(channel => channel.Id == channelId)
+            .Select(channel => (Guid?)channel.ServerId)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (serverId is null) return ChannelOperationStatus.NotFound;
+        return await authorizationService.HasPermissionAsync(
+            serverId.Value, userId, ServerPermission.ViewChannels, cancellationToken)
+            ? ChannelOperationStatus.Success
+            : ChannelOperationStatus.Forbidden;
+    }
+
     private static ChannelResponse ToResponse(Channel channel) => new(
         channel.Id, channel.ServerId, channel.Name, channel.Type, channel.Position,
         channel.CreatedAt, channel.UpdatedAt);

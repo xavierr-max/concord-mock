@@ -55,7 +55,8 @@ public static class ServiceCollectionExtensions
                     {
                         var accessToken = context.Request.Query["access_token"];
                         if (!string.IsNullOrEmpty(accessToken) &&
-                            context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat"))
+                            (context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat")
+                             || context.HttpContext.Request.Path.StartsWithSegments("/hubs/voice")))
                             context.Token = accessToken;
                         return Task.CompletedTask;
                     },
@@ -91,7 +92,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChannelService, ChannelService>();
         services.AddScoped<IServerAuthorizationService, ServerAuthorizationService>();
         services.AddScoped<IMessageService, MessageService>();
+        services.Configure<FileStorageSettings>(configuration.GetSection(FileStorageSettings.SectionName));
+        services.AddScoped<LocalFileStorageService>();
+        services.AddScoped<UnavailableFileStorageService>();
+        services.AddScoped<IFileStorageService>(provider =>
+        {
+            var environment = provider.GetRequiredService<IHostEnvironment>();
+            var settings = configuration.GetSection(FileStorageSettings.SectionName).Get<FileStorageSettings>()
+                ?? new FileStorageSettings();
+            return environment.IsDevelopment() && settings.Provider.Equals("Local", StringComparison.OrdinalIgnoreCase)
+                ? provider.GetRequiredService<LocalFileStorageService>()
+                : provider.GetRequiredService<UnavailableFileStorageService>();
+        });
         services.AddSingleton<IPresenceService, PresenceService>();
+        services.AddSingleton<IVoiceSessionService, VoiceSessionService>();
 
         var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
             ?? [];

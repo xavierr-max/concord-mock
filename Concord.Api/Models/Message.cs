@@ -11,4 +11,6 @@ public sealed class Message
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public bool IsDeleted { get; set; }
+    public ICollection<ChannelReadState> ReadStates { get; } = new List<ChannelReadState>();
+    public ICollection<MessageAttachment> Attachments { get; } = new List<MessageAttachment>();
 }

@@ -11,4 +11,5 @@ public sealed class Channel
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<Message> Messages { get; } = new List<Message>();
+    public ICollection<ChannelReadState> ReadStates { get; } = new List<ChannelReadState>();
 }

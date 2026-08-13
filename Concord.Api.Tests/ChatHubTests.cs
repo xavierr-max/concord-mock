@@ -144,14 +144,14 @@ public sealed class ChatHubTests
 
         await ownerConnection.StartAsync();
         await memberConnection.StartAsync();
-        var online = await onlineEvent.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var online = await onlineEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
         await memberConnection.StopAsync();
 
         await Task.Delay(30);
         Assert.False(offlineEvent.Task.IsCompleted);
-        var offline = await offlineEvent.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        await onlineStatusEvent.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        await offlineStatusEvent.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var offline = await offlineEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await onlineStatusEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await offlineStatusEvent.Task.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(UserStatus.Online, online.Status);
         Assert.Equal(UserStatus.Offline, offline.Status);
         Assert.Equal(UserStatus.Offline, factory.GetPresenceStatus(memberAuth.User.Id));

@@ -21,6 +21,7 @@ export const CHAT_METHODS = Object.freeze({
 
 export function createChatClient({ apiUrl, getAccessToken, handlers = {} }) {
   const joinedChannels = new Set()
+  let startPromise
   const connection = new HubConnectionBuilder()
     .withUrl(`${apiUrl.replace(/\/$/, '')}/hubs/chat`, {
       accessTokenFactory: getAccessToken,
@@ -43,18 +44,25 @@ export function createChatClient({ apiUrl, getAccessToken, handlers = {} }) {
   return {
     connection,
     async connect() {
-      if (connection.state === HubConnectionState.Disconnected) await connection.start()
+      if (connection.state === HubConnectionState.Connected) return
+      startPromise ??= connection.start().finally(() => { startPromise = undefined })
+      await startPromise
     },
     async disconnect() {
       joinedChannels.clear()
       if (connection.state !== HubConnectionState.Disconnected) await connection.stop()
     },
     async joinChannel(channelId) {
+      if (connection.state !== HubConnectionState.Connected) {
+        startPromise ??= connection.start().finally(() => { startPromise = undefined })
+        await startPromise
+      }
       await connection.invoke(CHAT_METHODS.joinChannel, channelId)
       joinedChannels.add(channelId)
     },
     async leaveChannel(channelId) {
-      await connection.invoke(CHAT_METHODS.leaveChannel, channelId)
+      if (connection.state === HubConnectionState.Connected)
+        await connection.invoke(CHAT_METHODS.leaveChannel, channelId)
       joinedChannels.delete(channelId)
     },
     sendMessage(channelId, content) {

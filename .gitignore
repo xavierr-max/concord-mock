@@ -19,6 +19,7 @@
 coverage/
 coverage.*
 .artifacts/
+Concord.Api/wwwroot/uploads/
 
 # Node/Vite output
 **/node_modules/

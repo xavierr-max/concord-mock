@@ -17,6 +17,8 @@ public sealed class ConcordDbContext(DbContextOptions<ConcordDbContext> options)
     public DbSet<ServerInvite> ServerInvites => Set<ServerInvite>();
     public DbSet<Channel> Channels => Set<Channel>();
     public DbSet<Message> Messages => Set<Message>();
+    public DbSet<ChannelReadState> ChannelReadStates => Set<ChannelReadState>();
+    public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -106,6 +108,36 @@ public sealed class ConcordDbContext(DbContextOptions<ConcordDbContext> options)
                 .WithMany(user => user.Messages)
                 .HasForeignKey(message => message.AuthorId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<ChannelReadState>(entity =>
+        {
+            entity.HasKey(state => new { state.ChannelId, state.UserId });
+            entity.HasIndex(state => new { state.UserId, state.ChannelId });
+            entity.HasOne(state => state.Channel)
+                .WithMany(channel => channel.ReadStates)
+                .HasForeignKey(state => state.ChannelId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(state => state.User)
+                .WithMany(user => user.ChannelReadStates)
+                .HasForeignKey(state => state.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(state => state.LastReadMessage)
+                .WithMany(message => message.ReadStates)
+                .HasForeignKey(state => state.LastReadMessageId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<MessageAttachment>(entity =>
+        {
+            entity.Property(attachment => attachment.FileName).HasMaxLength(255).IsRequired();
+            entity.Property(attachment => attachment.ContentType).HasMaxLength(127).IsRequired();
+            entity.Property(attachment => attachment.Url).HasMaxLength(2048).IsRequired();
+            entity.HasIndex(attachment => new { attachment.MessageId, attachment.CreatedAt });
+            entity.HasOne(attachment => attachment.Message)
+                .WithMany(message => message.Attachments)
+                .HasForeignKey(attachment => attachment.MessageId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
