@@ -88,5 +88,30 @@ public sealed class MessagesController(IMessageService messageService) : Control
         };
     }
 
+    [HttpPost("{id:guid}/attachments")]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType<MessageAttachmentResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<MessageAttachmentResponse>> AddAttachment(
+        Guid id, [FromForm] IFormFile? file, CancellationToken cancellationToken)
+    {
+        if (file is null) return BadRequest("Envie um arquivo no campo 'file'.");
+        var result = await messageService.AddAttachmentAsync(id, GetUserId(), file, cancellationToken);
+        return result.Status switch
+        {
+            MessageOperationStatus.Success => Created($"/api/messages/{id}/attachments/{result.Value!.Id}", result.Value),
+            MessageOperationStatus.NotFound => NotFound(),
+            MessageOperationStatus.Forbidden => StatusCode(StatusCodes.Status403Forbidden),
+            MessageOperationStatus.FileTooLarge => BadRequest("O arquivo excede o tamanho máximo permitido."),
+            MessageOperationStatus.InvalidContentType => BadRequest("Content-Type não permitido."),
+            MessageOperationStatus.InvalidExtension => BadRequest("Extensão incompatível ou não permitida."),
+            MessageOperationStatus.InvalidFileName => BadRequest("Nome de arquivo inválido."),
+            _ => BadRequest("O arquivo está vazio.")
+        };
+    }
+
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
 }

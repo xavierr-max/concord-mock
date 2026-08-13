@@ -21,13 +21,15 @@ export const CHAT_METHODS = Object.freeze({
 
 export function createChatClient({ apiUrl, getAccessToken, handlers = {} }) {
   const joinedChannels = new Set()
+  let startPromise
+  let disposed = false
   const connection = new HubConnectionBuilder()
     .withUrl(`${apiUrl.replace(/\/$/, '')}/hubs/chat`, {
       accessTokenFactory: getAccessToken,
       withCredentials: false,
     })
     .withAutomaticReconnect()
-    .configureLogging(LogLevel.Warning)
+    .configureLogging(import.meta.env.DEV ? LogLevel.Information : LogLevel.Warning)
     .build()
 
   Object.values(CHAT_EVENTS).forEach((eventName) => {
@@ -43,18 +45,31 @@ export function createChatClient({ apiUrl, getAccessToken, handlers = {} }) {
   return {
     connection,
     async connect() {
-      if (connection.state === HubConnectionState.Disconnected) await connection.start()
+      if (disposed) return
+      if (connection.state === HubConnectionState.Connected) return
+      startPromise ??= connection.start().finally(() => { startPromise = undefined })
+      await startPromise
     },
     async disconnect() {
+      disposed = true
       joinedChannels.clear()
+      // SignalR throws "stopped during negotiation" when stop() races start().
+      // Let an in-flight negotiation settle before closing this abandoned instance.
+      if (startPromise) {
+        try { await startPromise } catch { /* start already reports its own failure */ }
+      }
       if (connection.state !== HubConnectionState.Disconnected) await connection.stop()
     },
     async joinChannel(channelId) {
+      if (disposed) return
+      if (connection.state !== HubConnectionState.Connected) await this.connect()
+      if (disposed || connection.state !== HubConnectionState.Connected) return
       await connection.invoke(CHAT_METHODS.joinChannel, channelId)
       joinedChannels.add(channelId)
     },
     async leaveChannel(channelId) {
-      await connection.invoke(CHAT_METHODS.leaveChannel, channelId)
+      if (connection.state === HubConnectionState.Connected)
+        await connection.invoke(CHAT_METHODS.leaveChannel, channelId)
       joinedChannels.delete(channelId)
     },
     sendMessage(channelId, content) {

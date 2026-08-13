@@ -16,18 +16,18 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("ConcordDatabase")
+        var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
-                "A connection string 'ConcordDatabase' precisa ser configurada.");
+                "A connection string 'DefaultConnection' precisa ser configurada.");
 
         services.AddDbContext<ConcordDbContext>(options =>
             options.UseNpgsql(connectionString));
 
         var jwtSettings = configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>()
             ?? throw new InvalidOperationException("A seção Jwt precisa ser configurada.");
-        if (jwtSettings.SigningKey.Length < 32)
+        if (jwtSettings.Key.Length < 32)
         {
-            throw new InvalidOperationException("Jwt:SigningKey precisa ter ao menos 32 caracteres.");
+            throw new InvalidOperationException("Jwt:Key precisa ter ao menos 32 caracteres.");
         }
 
         services.Configure<JwtSettings>(configuration.GetSection(JwtSettings.SectionName));
@@ -55,7 +55,8 @@ public static class ServiceCollectionExtensions
                     {
                         var accessToken = context.Request.Query["access_token"];
                         if (!string.IsNullOrEmpty(accessToken) &&
-                            context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat"))
+                            (context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat")
+                             || context.HttpContext.Request.Path.StartsWithSegments("/hubs/voice")))
                             context.Token = accessToken;
                         return Task.CompletedTask;
                     },
@@ -74,7 +75,7 @@ public static class ServiceCollectionExtensions
                     ValidateAudience = true,
                     ValidAudience = jwtSettings.Audience,
                     ValidateIssuerSigningKey = true,
-                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.SigningKey)),
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key)),
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
                 };
@@ -91,7 +92,20 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChannelService, ChannelService>();
         services.AddScoped<IServerAuthorizationService, ServerAuthorizationService>();
         services.AddScoped<IMessageService, MessageService>();
+        services.Configure<FileStorageSettings>(configuration.GetSection(FileStorageSettings.SectionName));
+        services.AddScoped<LocalFileStorageService>();
+        services.AddScoped<UnavailableFileStorageService>();
+        services.AddScoped<IFileStorageService>(provider =>
+        {
+            var environment = provider.GetRequiredService<IHostEnvironment>();
+            var settings = configuration.GetSection(FileStorageSettings.SectionName).Get<FileStorageSettings>()
+                ?? new FileStorageSettings();
+            return environment.IsDevelopment() && settings.Provider.Equals("Local", StringComparison.OrdinalIgnoreCase)
+                ? provider.GetRequiredService<LocalFileStorageService>()
+                : provider.GetRequiredService<UnavailableFileStorageService>();
+        });
         services.AddSingleton<IPresenceService, PresenceService>();
+        services.AddSingleton<IVoiceSessionService, VoiceSessionService>();
 
         var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
             ?? [];

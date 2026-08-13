@@ -2,10 +2,16 @@
 
 ## Desenvolvimento
 
-1. Copie `.env.example` para `../.env` caso queira alterar as credenciais padrão.
+1. Copie o `.env.example` da raiz para `.env` e substitua o placeholder por uma senha local aleatória.
 2. Execute `docker compose up -d` na raiz do repositório para iniciar o PostgreSQL.
-3. Configure opcionalmente `ConnectionStrings__ConcordDatabase`; ela sobrepõe `appsettings.json`.
-4. Execute `dotnet ef database update` e `dotnet run`.
+3. No diretório `Concord.Api`, configure os segredos locais e aplique as migrations:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=5433;Database=<db>;Username=<user>;Password=<senha-local>"
+dotnet user-secrets set "Jwt:Key" "<chave-aleatoria-com-ao-menos-32-caracteres>"
+dotnet ef database update
+dotnet run
+```
 
 Em Development, o Swagger está em `/swagger` e a saúde da aplicação em `/health`.
 
@@ -14,11 +20,11 @@ Em Development, o Swagger está em `/swagger` e a saúde da aplicação em `/hea
 `appsettings.json` contém apenas configurações não sensíveis. Em desenvolvimento, a conexão e a chave JWT devem ser configuradas com .NET User Secrets:
 
 ```powershell
-dotnet user-secrets set "ConnectionStrings:ConcordDatabase" "<connection-string-local>"
-dotnet user-secrets set "Jwt:SigningKey" "<chave-aleatoria-com-ao-menos-32-caracteres>"
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<connection-string-local>"
+dotnet user-secrets set "Jwt:Key" "<chave-aleatoria-com-ao-menos-32-caracteres>"
 ```
 
-Em produção, use um secret manager ou variáveis de ambiente para `Jwt__SigningKey` e `ConnectionStrings__ConcordDatabase`. Configure também `Jwt__Issuer`, `Jwt__Audience` e `Cors__AllowedOrigins__0` conforme o ambiente.
+Em produção, use um secret manager ou variáveis de ambiente para `Jwt__Key` e `ConnectionStrings__DefaultConnection`. Configure também `Jwt__Issuer`, `Jwt__Audience` e `Cors__AllowedOrigins__0` conforme o ambiente.
 
 ## Autenticação
 
@@ -88,6 +94,18 @@ um `MessageResponse`. No evento de exclusão, `content` é `null` e `isDeleted` 
 Criações pelo hub e mutações pela API REST publicam os mesmos eventos. O histórico continua
 exclusivamente no REST; não há polling de mensagens.
 
+### Anexos
+
+O autor pode anexar um arquivo a uma mensagem ativa com
+`POST /api/messages/{messageId}/attachments`, usando `multipart/form-data` e o campo `file`.
+O binário não é armazenado no PostgreSQL; somente nome, tipo, tamanho, URL e data são
+persistidos. Em Development, `FileStorage:Provider=Local` usa `wwwroot/uploads`. Tamanho,
+Content-Types e extensões permitidas são definidos na seção `FileStorage`.
+
+Em Production, o padrão é `FileStorage:Provider=External`. Registre uma implementação de
+`IFileStorageService` para o provedor escolhido e configure sua URL pública. O serviço local
+não é habilitado em produção.
+
 ### Presença em tempo real
 
 Ao conectar ao `ChatHub`, o usuário é marcado como `Online` somente na memória e sua conexão
@@ -106,6 +124,25 @@ Os demais participantes do grupo recebem `TypingStarted` e `TypingStopped` com `
 `userId`, `username`, `avatar` e `occurredAt`; o emissor não recebe o próprio evento. O hub
 elimina chamadas consecutivas duplicadas e envia `TypingStopped` ao sair ou desconectar.
 Esses eventos existem somente em memória e nunca são persistidos.
+
+### Canais de voz
+
+O `VoiceHub` autenticado está disponível em `/hubs/voice`. Ele mantém `VoiceSession` e
+`VoiceParticipant` somente em memória e oferece `JoinVoiceChannel(channelId)`,
+`LeaveVoiceChannel()`, `SetMute(muted)` e `SetDeafened(deafened)`. Apenas membros podem
+entrar, e o canal precisa existir com `Type = Voice`.
+
+Os eventos `VoiceUserJoined`, `VoiceUserLeft` e `VoiceUserUpdated` transportam somente
+`userId`, `channelId`, `joinedAt`, `muted` e `deafened`. Áudio não passa pelo backend;
+o hub mantém apenas o estado necessário para uma futura camada de signaling WebRTC.
+
+Para signaling WebRTC, participantes da mesma sessão podem chamar
+`SendOffer(targetUserId, sdp)`, `SendAnswer(targetUserId, sdp)` e
+`SendIceCandidate(targetUserId, candidate)`. O destinatário recebe, respectivamente,
+`VoiceOfferReceived`, `VoiceAnswerReceived` e `VoiceIceCandidateReceived`, sempre com
+`senderUserId` e `channelId`. Os sinais são encaminhados somente às conexões do destinatário,
+não são enviados à sala inteira e nunca são persistidos. Os logs incluem apenas tipo do
+sinal e identificadores, sem registrar SDP ou ICE candidates.
 
 A PWA disponibiliza `src/realtime/chatClient.js`, com os contratos de métodos/eventos,
 reentrada automática nos canais após reconexão e um controlador de digitação que aplica

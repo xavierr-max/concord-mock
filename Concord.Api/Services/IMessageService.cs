@@ -2,7 +2,11 @@ using Concord.Api.DTOs.Messages;
 
 namespace Concord.Api.Services;
 
-public enum MessageOperationStatus { Success, NotFound, Forbidden, InvalidChannel, InvalidContent }
+public enum MessageOperationStatus
+{
+    Success, NotFound, Forbidden, InvalidChannel, InvalidContent,
+    InvalidFileName, InvalidContentType, InvalidExtension, FileTooLarge, EmptyFile
+}
 
 public sealed record MessageOperationResult<T>(MessageOperationStatus Status, T? Value = default);
 
@@ -15,4 +19,6 @@ public interface IMessageService
     Task<MessageOperationResult<MessageResponse>> UpdateAsync(
         Guid messageId, Guid userId, SaveMessageRequest request, CancellationToken cancellationToken);
     Task<MessageOperationStatus> DeleteAsync(Guid messageId, Guid userId, CancellationToken cancellationToken);
+    Task<MessageOperationResult<MessageAttachmentResponse>> AddAttachmentAsync(
+        Guid messageId, Guid userId, IFormFile file, CancellationToken cancellationToken);
 }

@@ -9,6 +9,7 @@ using Concord.Api.DTOs.Channels;
 using Concord.Api.DTOs.Messages;
 using Concord.Api.DTOs.Servers;
 using Concord.Api.Models;
+using Concord.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -152,8 +153,144 @@ public sealed class MessageEndpointsTests
         Assert.Equal("retained internally", await factory.GetStoredContentAsync(message.Id));
     }
 
+    [Fact]
+    public async Task Unread_count_excludes_own_messages_and_read_advances_the_cursor()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var member = factory.CreateClient();
+        await RegisterAsync(member, "member");
+        await member.PostAsync($"/api/servers/{channel.ServerId}/members", null);
+
+        await SendAsync(owner, channel.Id, "own message");
+        await SendAsync(member, channel.Id, "first unread");
+        await SendAsync(member, channel.Id, "second unread");
+
+        Assert.Equal(2, (await owner.GetFromJsonAsync<UnreadCountResponse>(
+            $"/api/channels/{channel.Id}/unread-count", JsonOptions))!.UnreadCount);
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await owner.PostAsync($"/api/channels/{channel.Id}/read", null)).StatusCode);
+        Assert.Equal(0, (await owner.GetFromJsonAsync<UnreadCountResponse>(
+            $"/api/channels/{channel.Id}/unread-count", JsonOptions))!.UnreadCount);
+
+        await SendAsync(owner, channel.Id, "still not unread");
+        await SendAsync(member, channel.Id, "new unread");
+        Assert.Equal(1, (await owner.GetFromJsonAsync<UnreadCountResponse>(
+            $"/api/channels/{channel.Id}/unread-count", JsonOptions))!.UnreadCount);
+    }
+
+    [Fact]
+    public async Task Unread_endpoints_require_membership_and_mentions_are_ready_for_future_support()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var outsider = factory.CreateClient();
+        await RegisterAsync(outsider, "outsider");
+
+        var mentions = await owner.GetFromJsonAsync<UnreadMentionCountResponse>(
+            $"/api/channels/{channel.Id}/unread-mention-count", JsonOptions);
+
+        Assert.Equal(0, mentions!.UnreadMentionCount);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await outsider.PostAsync($"/api/channels/{channel.Id}/read", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await outsider.GetAsync($"/api/channels/{channel.Id}/unread-count")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Author_can_upload_attachment_and_history_returns_metadata()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var created = await SendAsync(owner, channel.Id, "with attachment");
+        var message = (await created.Content.ReadFromJsonAsync<MessageResponse>(JsonOptions))!;
+
+        var response = await UploadAsync(owner, message.Id, "photo.png", "image/png", [1, 2, 3]);
+        var attachment = await response.Content.ReadFromJsonAsync<MessageAttachmentResponse>(JsonOptions);
+        var history = await owner.GetFromJsonAsync<PagedMessagesResponse>(
+            $"/api/channels/{channel.Id}/messages?page=1&pageSize=20", JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal("photo.png", attachment!.FileName);
+        Assert.Equal(3, attachment.FileSize);
+        Assert.StartsWith("/test-files/", attachment.Url);
+        Assert.Equal(attachment.Id, Assert.Single(Assert.Single(history!.Items).Attachments).Id);
+    }
+
+    [Theory]
+    [InlineData("photo.exe", "image/png")]
+    [InlineData("photo.png", "application/octet-stream")]
+    [InlineData("../photo.png", "image/png")]
+    [InlineData("photo", "image/png")]
+    public async Task Invalid_extension_content_type_and_file_name_are_rejected(
+        string fileName, string contentType)
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var created = await SendAsync(owner, channel.Id, "upload validation");
+        var message = (await created.Content.ReadFromJsonAsync<MessageResponse>(JsonOptions))!;
+
+        var response = await UploadAsync(owner, message.Id, fileName, contentType, [1]);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Empty_oversized_and_unauthenticated_uploads_are_rejected()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var created = await SendAsync(owner, channel.Id, "limits");
+        var message = (await created.Content.ReadFromJsonAsync<MessageResponse>(JsonOptions))!;
+
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await UploadAsync(owner, message.Id, "empty.png", "image/png", [])).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await UploadAsync(owner, message.Id, "large.png", "image/png", new byte[10 * 1024 * 1024 + 1])).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await UploadAsync(factory.CreateClient(), message.Id, "photo.png", "image/png", [1])).StatusCode);
+    }
+
+    [Fact]
+    public async Task Another_member_cannot_attach_files_to_someone_elses_message()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "owner");
+        var channel = await CreateTextChannelAsync(owner);
+        var created = await SendAsync(owner, channel.Id, "owned");
+        var message = (await created.Content.ReadFromJsonAsync<MessageResponse>(JsonOptions))!;
+        var member = factory.CreateClient();
+        await RegisterAsync(member, "member");
+        await member.PostAsync($"/api/servers/{channel.ServerId}/members", null);
+
+        var response = await UploadAsync(member, message.Id, "photo.png", "image/png", [1]);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     private static Task<HttpResponseMessage> SendAsync(HttpClient client, Guid channelId, string content) =>
         client.PostAsJsonAsync($"/api/channels/{channelId}/messages", new SaveMessageRequest { Content = content });
+
+    private static Task<HttpResponseMessage> UploadAsync(
+        HttpClient client, Guid messageId, string fileName, string contentType, byte[] bytes)
+    {
+        var multipart = new MultipartFormDataContent();
+        var file = new ByteArrayContent(bytes);
+        file.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        multipart.Add(file, "file", fileName);
+        return client.PostAsync($"/api/messages/{messageId}/attachments", multipart);
+    }
 
     private static async Task<ChannelResponse> CreateTextChannelAsync(HttpClient owner)
     {
@@ -192,6 +329,8 @@ public sealed class MessageEndpointsTests
                 services.RemoveAll<ConcordDbContext>();
                 services.AddDbContext<ConcordDbContext>(options =>
                     options.UseInMemoryDatabase(_databaseName, _databaseRoot));
+                services.RemoveAll<IFileStorageService>();
+                services.AddSingleton<IFileStorageService, TestFileStorageService>();
             });
         }
 
@@ -212,5 +351,16 @@ public sealed class MessageEndpointsTests
             return await context.Messages.Where(message => message.Id == messageId)
                 .Select(message => message.Content).SingleAsync();
         }
+    }
+
+    private sealed class TestFileStorageService : IFileStorageService
+    {
+        public Task<StoredFile> SaveAsync(Stream content, string extension, CancellationToken cancellationToken)
+        {
+            var key = $"{Guid.NewGuid():N}{extension}";
+            return Task.FromResult(new StoredFile($"/test-files/{key}", key));
+        }
+
+        public Task DeleteAsync(string storageKey, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

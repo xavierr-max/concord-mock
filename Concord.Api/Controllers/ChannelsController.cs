@@ -81,5 +81,48 @@ public sealed class ChannelsController(IChannelService channelService) : Control
         };
     }
 
+    [HttpPost("{id:guid}/read")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> MarkAsRead(Guid id, CancellationToken cancellationToken)
+    {
+        var status = await channelService.MarkAsReadAsync(id, GetUserId(), cancellationToken);
+        return ToActionResult(status);
+    }
+
+    [HttpGet("{id:guid}/unread-count")]
+    [ProducesResponseType<UnreadCountResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<UnreadCountResponse>> GetUnreadCount(
+        Guid id, CancellationToken cancellationToken)
+    {
+        var result = await channelService.GetUnreadCountAsync(id, GetUserId(), cancellationToken);
+        return result.Status switch
+        {
+            ChannelOperationStatus.Success => Ok(result.Value),
+            ChannelOperationStatus.NotFound => NotFound(),
+            _ => StatusCode(StatusCodes.Status403Forbidden)
+        };
+    }
+
+    [HttpGet("{id:guid}/unread-mention-count")]
+    [ProducesResponseType<UnreadMentionCountResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<UnreadMentionCountResponse>> GetUnreadMentionCount(
+        Guid id, CancellationToken cancellationToken)
+    {
+        var result = await channelService.GetUnreadMentionCountAsync(id, GetUserId(), cancellationToken);
+        return result.Status switch
+        {
+            ChannelOperationStatus.Success => Ok(result.Value),
+            ChannelOperationStatus.NotFound => NotFound(),
+            _ => StatusCode(StatusCodes.Status403Forbidden)
+        };
+    }
+
+    private IActionResult ToActionResult(ChannelOperationStatus status) => status switch
+    {
+        ChannelOperationStatus.Success => NoContent(),
+        ChannelOperationStatus.NotFound => NotFound(),
+        _ => StatusCode(StatusCodes.Status403Forbidden)
+    };
+
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(JwtRegisteredClaimNames.Sub)!);
 }

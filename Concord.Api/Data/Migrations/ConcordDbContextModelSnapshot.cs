@@ -153,6 +153,29 @@ namespace Concord.Api.Data.Migrations
                     b.ToTable("Channels");
                 });
 
+            modelBuilder.Entity("Concord.Api.Models.ChannelReadState", b =>
+                {
+                    b.Property<Guid>("ChannelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LastReadMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ChannelId", "UserId");
+
+                    b.HasIndex("LastReadMessageId");
+
+                    b.HasIndex("UserId", "ChannelId");
+
+                    b.ToTable("ChannelReadStates");
+                });
+
             modelBuilder.Entity("Concord.Api.Models.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -188,6 +211,43 @@ namespace Concord.Api.Data.Migrations
                     b.HasIndex("ChannelId", "CreatedAt");
 
                     b.ToTable("Messages");
+                });
+
+            modelBuilder.Entity("Concord.Api.Models.MessageAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(127)
+                        .HasColumnType("character varying(127)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId", "CreatedAt");
+
+                    b.ToTable("MessageAttachments");
                 });
 
             modelBuilder.Entity("Concord.Api.Models.RefreshToken", b =>
@@ -467,6 +527,33 @@ namespace Concord.Api.Data.Migrations
                     b.Navigation("Server");
                 });
 
+            modelBuilder.Entity("Concord.Api.Models.ChannelReadState", b =>
+                {
+                    b.HasOne("Concord.Api.Models.Channel", "Channel")
+                        .WithMany("ReadStates")
+                        .HasForeignKey("ChannelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Concord.Api.Models.Message", "LastReadMessage")
+                        .WithMany("ReadStates")
+                        .HasForeignKey("LastReadMessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Concord.Api.Models.ApplicationUser", "User")
+                        .WithMany("ChannelReadStates")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Channel");
+
+                    b.Navigation("LastReadMessage");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Concord.Api.Models.Message", b =>
                 {
                     b.HasOne("Concord.Api.Models.ApplicationUser", "Author")
@@ -484,6 +571,17 @@ namespace Concord.Api.Data.Migrations
                     b.Navigation("Author");
 
                     b.Navigation("Channel");
+                });
+
+            modelBuilder.Entity("Concord.Api.Models.MessageAttachment", b =>
+                {
+                    b.HasOne("Concord.Api.Models.Message", "Message")
+                        .WithMany("Attachments")
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
                 });
 
             modelBuilder.Entity("Concord.Api.Models.RefreshToken", b =>
@@ -599,6 +697,8 @@ namespace Concord.Api.Data.Migrations
 
             modelBuilder.Entity("Concord.Api.Models.ApplicationUser", b =>
                 {
+                    b.Navigation("ChannelReadStates");
+
                     b.Navigation("CreatedServerInvites");
 
                     b.Navigation("Messages");
@@ -613,6 +713,15 @@ namespace Concord.Api.Data.Migrations
             modelBuilder.Entity("Concord.Api.Models.Channel", b =>
                 {
                     b.Navigation("Messages");
+
+                    b.Navigation("ReadStates");
+                });
+
+            modelBuilder.Entity("Concord.Api.Models.Message", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("ReadStates");
                 });
 
             modelBuilder.Entity("Concord.Api.Models.Server", b =>

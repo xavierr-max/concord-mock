@@ -15,4 +15,10 @@ public interface IChannelService
     Task<ChannelOperationResult<ChannelResponse>> UpdateAsync(
         Guid channelId, Guid userId, SaveChannelRequest request, CancellationToken cancellationToken);
     Task<ChannelOperationStatus> DeleteAsync(Guid channelId, Guid userId, CancellationToken cancellationToken);
+    Task<ChannelOperationStatus> MarkAsReadAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken);
+    Task<ChannelOperationResult<UnreadCountResponse>> GetUnreadCountAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken);
+    Task<ChannelOperationResult<UnreadMentionCountResponse>> GetUnreadMentionCountAsync(
+        Guid channelId, Guid userId, CancellationToken cancellationToken);
 }
