@@ -1,0 +1,32 @@
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+**/appsettings.*.Local.json
+**/secrets.json
+*.pfx
+*.p12
+*.key
+*.pem
+
+# .NET build and test output
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+*.suo
+coverage/
+coverage.*
+.artifacts/
+
+# Node/Vite output
+**/node_modules/
+**/dist/
+
+# IDE and operating system files
+.idea/
+.vs/
+.vscode/
+.DS_Store
+Thumbs.db
