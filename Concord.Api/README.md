@@ -11,7 +11,14 @@ Em Development, o Swagger está em `/swagger` e a saúde da aplicação em `/hea
 
 ## Configuração
 
-`appsettings.json` define a conexão de desenvolvimento, origens da PWA permitidas por CORS e valores JWT locais. Em produção, a chave JWT é obrigatoriamente fornecida por ambiente: `Jwt__SigningKey` (mínimo de 32 caracteres). Configure também `Jwt__Issuer`, `Jwt__Audience`, `ConnectionStrings__ConcordDatabase` e `Cors__AllowedOrigins__0` conforme o ambiente.
+`appsettings.json` contém apenas configurações não sensíveis. Em desenvolvimento, a conexão e a chave JWT devem ser configuradas com .NET User Secrets:
+
+```powershell
+dotnet user-secrets set "ConnectionStrings:ConcordDatabase" "<connection-string-local>"
+dotnet user-secrets set "Jwt:SigningKey" "<chave-aleatoria-com-ao-menos-32-caracteres>"
+```
+
+Em produção, use um secret manager ou variáveis de ambiente para `Jwt__SigningKey` e `ConnectionStrings__ConcordDatabase`. Configure também `Jwt__Issuer`, `Jwt__Audience` e `Cors__AllowedOrigins__0` conforme o ambiente.
 
 ## Autenticação
 

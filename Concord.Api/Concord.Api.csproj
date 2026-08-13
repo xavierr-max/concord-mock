@@ -4,6 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>concord-api-development-4f578467-5798-48c9-b900-a70c552c7c20</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
