@@ -27,6 +27,7 @@ public sealed class MessagesController(IMessageService messageService) : Control
             MessageOperationStatus.Success => Created($"/api/messages/{result.Value!.Id}", result.Value),
             MessageOperationStatus.NotFound => NotFound(),
             MessageOperationStatus.InvalidChannel => BadRequest("Mensagens só podem ser enviadas em canais de texto."),
+            MessageOperationStatus.InvalidContent => BadRequest("Conteúdo da mensagem inválido."),
             _ => StatusCode(StatusCodes.Status403Forbidden)
         };
     }
@@ -66,6 +67,7 @@ public sealed class MessagesController(IMessageService messageService) : Control
         {
             MessageOperationStatus.Success => Ok(result.Value),
             MessageOperationStatus.NotFound => NotFound(),
+            MessageOperationStatus.InvalidContent => BadRequest("Conteúdo da mensagem inválido."),
             _ => StatusCode(StatusCodes.Status403Forbidden)
         };
     }

@@ -2,7 +2,7 @@ using Concord.Api.DTOs.Messages;
 
 namespace Concord.Api.Services;
 
-public enum MessageOperationStatus { Success, NotFound, Forbidden, InvalidChannel }
+public enum MessageOperationStatus { Success, NotFound, Forbidden, InvalidChannel, InvalidContent }
 
 public sealed record MessageOperationResult<T>(MessageOperationStatus Status, T? Value = default);
 

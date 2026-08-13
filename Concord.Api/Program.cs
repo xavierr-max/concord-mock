@@ -1,6 +1,7 @@
 using Concord.Api.Configurations;
 using Concord.Api.Data;
 using Concord.Api.Middleware;
+using Concord.Api.Hubs;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using System.Text.Json.Serialization;
@@ -12,6 +13,12 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Concord API",
+        Version = "v1",
+        Description = "API REST persistente do Concord. Mensagens e presença em tempo real usam o ChatHub em /hubs/chat."
+    });
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -39,6 +46,7 @@ app.UseCors(CorsConfiguration.PolicyName);
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<ChatHub>("/hubs/chat");
 app.MapHealthChecks("/health");
 
 app.Run();

@@ -1,17 +1,21 @@
 using Concord.Api.Data;
 using Concord.Api.DTOs.Messages;
+using Concord.Api.Hubs;
 using Concord.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 
 namespace Concord.Api.Services;
 
 public sealed class MessageService(
     ConcordDbContext dbContext,
-    IServerAuthorizationService authorizationService) : IMessageService
+    IServerAuthorizationService authorizationService,
+    IHubContext<ChatHub> hubContext) : IMessageService
 {
     public async Task<MessageOperationResult<MessageResponse>> CreateAsync(
         Guid channelId, Guid userId, SaveMessageRequest request, CancellationToken cancellationToken)
     {
+        if (!IsValidContent(request.Content)) return new(MessageOperationStatus.InvalidContent);
         var channel = await dbContext.Channels.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == channelId, cancellationToken);
         if (channel is null) return new(MessageOperationStatus.NotFound);
@@ -28,8 +32,10 @@ public sealed class MessageService(
         };
         dbContext.Messages.Add(message);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(MessageOperationStatus.Success,
-            await LoadResponseAsync(message.Id, cancellationToken));
+        var response = await LoadResponseAsync(message.Id, cancellationToken);
+        await hubContext.Clients.Group(ChatHub.GroupName(channelId))
+            .SendAsync(ChatHubEvents.MessageCreated, response, cancellationToken);
+        return new(MessageOperationStatus.Success, response);
     }
 
     public async Task<MessageOperationResult<PagedMessagesResponse>> ListAsync(
@@ -56,6 +62,7 @@ public sealed class MessageService(
     public async Task<MessageOperationResult<MessageResponse>> UpdateAsync(
         Guid messageId, Guid userId, SaveMessageRequest request, CancellationToken cancellationToken)
     {
+        if (!IsValidContent(request.Content)) return new(MessageOperationStatus.InvalidContent);
         var message = await dbContext.Messages.Include(item => item.Channel)
             .SingleOrDefaultAsync(item => item.Id == messageId, cancellationToken);
         if (message is null || message.IsDeleted) return new(MessageOperationStatus.NotFound);
@@ -68,8 +75,10 @@ public sealed class MessageService(
         message.Content = request.Content.Trim();
         message.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return new(MessageOperationStatus.Success,
-            await LoadResponseAsync(message.Id, cancellationToken));
+        var response = await LoadResponseAsync(message.Id, cancellationToken);
+        await hubContext.Clients.Group(ChatHub.GroupName(message.ChannelId))
+            .SendAsync(ChatHubEvents.MessageUpdated, response, cancellationToken);
+        return new(MessageOperationStatus.Success, response);
     }
 
     public async Task<MessageOperationStatus> DeleteAsync(
@@ -87,6 +96,9 @@ public sealed class MessageService(
         message.IsDeleted = true;
         message.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
+        var response = await LoadResponseAsync(message.Id, cancellationToken);
+        await hubContext.Clients.Group(ChatHub.GroupName(message.ChannelId))
+            .SendAsync(ChatHubEvents.MessageDeleted, response, cancellationToken);
         return MessageOperationStatus.Success;
     }
 
@@ -101,4 +113,7 @@ public sealed class MessageService(
         message.Id, message.ChannelId,
         new MessageAuthorResponse(message.AuthorId, message.Author.Username, message.Author.Avatar),
         message.IsDeleted ? null : message.Content, message.CreatedAt, message.UpdatedAt, message.IsDeleted);
+
+    private static bool IsValidContent(string? content) =>
+        !string.IsNullOrWhiteSpace(content) && content.Length <= 2000;
 }

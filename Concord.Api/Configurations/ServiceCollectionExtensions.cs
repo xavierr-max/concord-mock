@@ -51,6 +51,14 @@ public static class ServiceCollectionExtensions
                 options.IncludeErrorDetails = true;
                 options.Events = new JwtBearerEvents
                 {
+                    OnMessageReceived = context =>
+                    {
+                        var accessToken = context.Request.Query["access_token"];
+                        if (!string.IsNullOrEmpty(accessToken) &&
+                            context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat"))
+                            context.Token = accessToken;
+                        return Task.CompletedTask;
+                    },
                     OnAuthenticationFailed = context =>
                     {
                         context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
@@ -72,6 +80,8 @@ public static class ServiceCollectionExtensions
                 };
             });
         services.AddAuthorization();
+        services.AddSignalR();
+        services.Configure<PresenceSettings>(configuration.GetSection(PresenceSettings.SectionName));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IAuthService, AuthService>();
@@ -81,6 +91,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChannelService, ChannelService>();
         services.AddScoped<IServerAuthorizationService, ServerAuthorizationService>();
         services.AddScoped<IMessageService, MessageService>();
+        services.AddSingleton<IPresenceService, PresenceService>();
 
         var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
             ?? [];
