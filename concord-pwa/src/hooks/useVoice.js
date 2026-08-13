@@ -21,7 +21,7 @@ export function useVoice(onError) {
       onError: error => errorHandler.current?.(error),
     })
     clientRef.current = client
-    return () => { clientRef.current = null; void client.leave() }
+    return () => { clientRef.current = null; void client.dispose() }
   }, [])
 
   return {

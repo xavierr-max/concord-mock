@@ -51,11 +51,17 @@ contadores de não lidas. As permissões visuais são derivadas dos papéis `OWN
 
 O `ChatHub` entrega mensagens, presença e indicadores de digitação. O hook encerra grupos e
 listeners ao trocar de canal ou desmontar o workspace e reentra nos canais após reconexão.
+O JWT é enviado por `accessTokenFactory`. Ao desmontar, o lifecycle aguarda uma negociação
+pendente antes de encerrar a conexão, evitando corridas durante a montagem dupla do Strict Mode.
 
 O `VoiceHub` mantém participantes, mute/deafened e encaminha SDP/ICE somente entre usuários
 da mesma sessão. O áudio nunca passa pelo backend: cada par usa `RTCPeerConnection`. A PWA
 solicita apenas microfone (`video: false`), reproduz streams remotos, controla volume por peer,
 detecta fala localmente e libera tracks, analysers, elementos de áudio e peers ao sair.
+
+Em **Seu perfil → Testar microfone**, o usuário pode selecionar a entrada, visualizar o nível
+e ouvir um retorno exclusivamente local, com volume e mute. Use fones para evitar microfonia.
+O teste não usa SignalR/WebRTC remoto e encerra todas as tracks ao parar ou fechar o modal.
 
 ## Teste manual com dois usuários
 

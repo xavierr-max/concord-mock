@@ -11,6 +11,7 @@ export function useChat({ channelId, onMessage, onPresence, onTyping, onError })
     [onMessage, onPresence, onTyping, onError])
 
   useEffect(() => {
+    let active = true
     const handlers = {
       [CHAT_EVENTS.messageCreated]: message => callbacks.current.onMessage?.('created', message),
       [CHAT_EVENTS.messageUpdated]: message => callbacks.current.onMessage?.('updated', message),
@@ -27,8 +28,8 @@ export function useChat({ channelId, onMessage, onPresence, onTyping, onError })
       handlers,
     })
     clientRef.current = client
-    client.connect().catch(error => callbacks.current.onError?.(error))
-    return () => { clientRef.current = null; void client.disconnect() }
+    client.connect().catch(error => { if (active) callbacks.current.onError?.(error) })
+    return () => { active = false; clientRef.current = null; void client.disconnect() }
   }, [])
 
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { HubConnectionBuilder, HubConnectionState, LogLevel } from '@microsoft/signalr'
+import { getMicrophoneStream, stopMediaStream } from '../services/mediaDevices.js'
 
 export const VOICE_EVENTS = Object.freeze({
   userJoined: 'VoiceUserJoined',
@@ -43,6 +44,8 @@ export function createVoiceClient({
   let deafened = false
   let audioContext
   let localSpeakingMonitor
+  let lifecycle = 0
+  let disposed = false
   const peers = new Map()
   const participants = new Map()
   const participantVolumes = new Map()
@@ -53,7 +56,7 @@ export function createVoiceClient({
       withCredentials: false,
     })
     .withAutomaticReconnect([0, 2_000, 5_000, 10_000])
-    .configureLogging(LogLevel.Warning)
+    .configureLogging(import.meta.env.DEV ? LogLevel.Information : LogLevel.Warning)
     .build()
 
   const emitParticipants = () => onParticipantChange([...participants.values()])
@@ -128,7 +131,7 @@ export function createVoiceClient({
   }
 
   function stopMicrophone() {
-    localStream?.getTracks().forEach((track) => track.stop())
+    stopMediaStream(localStream)
     localSpeakingMonitor?.()
     localSpeakingMonitor = undefined
     localStream = undefined
@@ -274,6 +277,8 @@ export function createVoiceClient({
     connection,
     get isJoined() { return Boolean(joinedChannelId) },
     async join(channelId) {
+      if (disposed) throw new VoiceClientError('DISPOSED', 'A conexão de voz foi encerrada.')
+      const operation = ++lifecycle
       if (!channelId) throw new VoiceClientError('CONFIGURATION', 'Canal de voz não configurado.')
       if (!navigator.mediaDevices?.getUserMedia)
         throw new VoiceClientError('NO_MEDIA_DEVICES', 'Este dispositivo ou navegador não oferece acesso ao microfone.')
@@ -283,14 +288,17 @@ export function createVoiceClient({
       currentUserId = getUserIdFromToken(token)
       onStatusChange('requesting-microphone')
       try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true })
+        const stream = await getMicrophoneStream()
+        if (disposed || operation !== lifecycle) { stopMediaStream(stream); return }
+        localStream = stream
       } catch (error) {
-        throw microphoneError(error)
+        throw new VoiceClientError(error.code || 'MICROPHONE_ERROR', error.message, error)
       }
 
       try {
         intentionalDisconnect = false
         if (connection.state === HubConnectionState.Disconnected) await connection.start()
+        if (disposed || operation !== lifecycle) { stopMicrophone(); return }
         // Set before invoking so an offer triggered by VoiceUserJoined cannot race the hub completion.
         joinedChannelId = channelId
         const participant = await connection.invoke(VOICE_METHODS.join, channelId)
@@ -304,6 +312,7 @@ export function createVoiceClient({
       }
     },
     async leave() {
+      lifecycle += 1
       intentionalDisconnect = true
       try {
         if (connection.state === HubConnectionState.Connected && joinedChannelId)
@@ -353,19 +362,9 @@ export function createVoiceClient({
         emitParticipants()
       }
     },
-    async dispose() { await this.leave() },
+    async dispose() { disposed = true; await this.leave() },
     get reconnecting() { return reconnecting },
   }
-}
-
-function microphoneError(error) {
-  if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError')
-    return new VoiceClientError('MICROPHONE_DENIED', 'Permissão para usar o microfone foi negada.', error)
-  if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError')
-    return new VoiceClientError('NO_MICROPHONE', 'Nenhum microfone foi encontrado.', error)
-  if (error?.name === 'NotReadableError' || error?.name === 'TrackStartError')
-    return new VoiceClientError('MICROPHONE_UNAVAILABLE', 'O microfone está ocupado ou indisponível.', error)
-  return new VoiceClientError('MICROPHONE_ERROR', 'Não foi possível acessar o microfone.', error)
 }
 
 function normalizeError(error) {
