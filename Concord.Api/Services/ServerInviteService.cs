@@ -10,7 +10,8 @@ namespace Concord.Api.Services;
 
 public sealed class ServerInviteService(
     ConcordDbContext dbContext,
-    IServerAuthorizationService authorizationService) : IServerInviteService
+    IServerAuthorizationService authorizationService,
+    INotificationService notificationService) : IServerInviteService
 {
     public async Task<InviteOperationResult<ServerInviteResponse>> CreateAsync(
         Guid serverId, Guid userId, CreateServerInviteRequest request, CancellationToken cancellationToken)
@@ -29,6 +30,7 @@ public sealed class ServerInviteService(
         };
         dbContext.ServerInvites.Add(invite);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationService.CreateInviteCreatedNotificationsAsync(invite.Id, userId, cancellationToken);
         return new(InviteOperationStatus.Success,
             await LoadResponseAsync(invite.Code, cancellationToken));
     }
@@ -76,6 +78,8 @@ public sealed class ServerInviteService(
 
         var loaded = await dbContext.ServerMembers.AsNoTracking().Include(item => item.User)
             .SingleAsync(item => item.Id == member.Id, cancellationToken);
+        await notificationService.CreateMemberJoinedNotificationsAsync(
+            invite.ServerId, userId, invite.CreatedByUserId, cancellationToken);
         return new(InviteOperationStatus.Success, new ServerMemberResponse(
             loaded.Id, loaded.UserId, loaded.User.Username, loaded.User.Avatar,
             loaded.Role.ToString(), loaded.JoinedAt));

@@ -19,6 +19,7 @@ public sealed class ConcordDbContext(DbContextOptions<ConcordDbContext> options)
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<ChannelReadState> ChannelReadStates => Set<ChannelReadState>();
     public DbSet<MessageAttachment> MessageAttachments => Set<MessageAttachment>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -138,6 +139,22 @@ public sealed class ConcordDbContext(DbContextOptions<ConcordDbContext> options)
                 .WithMany(message => message.Attachments)
                 .HasForeignKey(attachment => attachment.MessageId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<Notification>(entity =>
+        {
+            entity.Property(notification => notification.Type).HasConversion<string>().HasMaxLength(32);
+            entity.Property(notification => notification.Title).HasMaxLength(140).IsRequired();
+            entity.Property(notification => notification.Content).HasMaxLength(500).IsRequired();
+            entity.HasIndex(notification => new { notification.UserId, notification.IsRead, notification.CreatedAt });
+            entity.HasOne(notification => notification.User)
+                .WithMany(user => user.Notifications)
+                .HasForeignKey(notification => notification.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(notification => notification.ActorUser)
+                .WithMany(user => user.TriggeredNotifications)
+                .HasForeignKey(notification => notification.ActorUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

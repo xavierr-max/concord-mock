@@ -7,7 +7,8 @@ namespace Concord.Api.Services;
 
 public sealed class ServerService(
     ConcordDbContext dbContext,
-    IServerAuthorizationService authorizationService) : IServerService
+    IServerAuthorizationService authorizationService,
+    INotificationService notificationService) : IServerService
 {
     public async Task<ServerResponse> CreateAsync(
         Guid userId, CreateServerRequest request, CancellationToken cancellationToken)
@@ -90,6 +91,8 @@ public sealed class ServerService(
         await dbContext.SaveChangesAsync(cancellationToken);
         var loaded = await dbContext.ServerMembers.AsNoTracking().Include(item => item.User)
             .SingleAsync(item => item.Id == member.Id, cancellationToken);
+        await notificationService.CreateMemberJoinedNotificationsAsync(
+            serverId, userId, null, cancellationToken);
         return new(ServerOperationStatus.Success, ToMemberResponse(loaded));
     }
 

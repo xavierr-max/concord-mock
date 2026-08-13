@@ -58,6 +58,9 @@ O `VoiceHub` mantém participantes, mute/deafened e encaminha SDP/ICE somente en
 da mesma sessão. O áudio nunca passa pelo backend: cada par usa `RTCPeerConnection`. A PWA
 solicita apenas microfone (`video: false`), reproduz streams remotos, controla volume por peer,
 detecta fala localmente e libera tracks, analysers, elementos de áudio e peers ao sair.
+Reconexões SignalR continuam tentando em intervalos controlados enquanto a rede estiver fora;
+após retornar, a sessão é reaberta sem duplicar tracks. Peers em `disconnected` recebem uma
+janela de recuperação e executam ICE restart; em falha definitiva, somente aquele peer é recriado.
 
 Em **Seu perfil → Testar microfone**, o usuário pode selecionar a entrada, visualizar o nível
 e ouvir um retorno exclusivamente local, com volume e mute. Use fones para evitar microfonia.

@@ -7,6 +7,7 @@ using Concord.Api.Data;
 using Concord.Api.DTOs.Auth;
 using Concord.Api.DTOs.Channels;
 using Concord.Api.DTOs.Messages;
+using Concord.Api.DTOs.Notifications;
 using Concord.Api.DTOs.Servers;
 using Concord.Api.Models;
 using Concord.Api.Services;
@@ -277,6 +278,32 @@ public sealed class MessageEndpointsTests
         var response = await UploadAsync(member, message.Id, "photo.png", "image/png", [1]);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Message_and_mention_notifications_can_be_listed_and_marked_read()
+    {
+        await using var factory = new MessageWebApplicationFactory();
+        var owner = factory.CreateClient();
+        await RegisterAsync(owner, "notifyowner");
+        var channel = await CreateTextChannelAsync(owner);
+        var member = factory.CreateClient();
+        await RegisterAsync(member, "notifymember");
+        await member.PostAsync($"/api/servers/{channel.ServerId}/members", null);
+
+        await SendAsync(owner, channel.Id, "olá @notifymember");
+        var page = await member.GetFromJsonAsync<PagedNotificationsResponse>(
+            "/api/notifications?page=1&pageSize=20", JsonOptions);
+        var notification = Assert.Single(page!.Items, item => item.Type == "Mention");
+        var count = await member.GetFromJsonAsync<UnreadNotificationsResponse>(
+            "/api/notifications/unread-count", JsonOptions);
+
+        Assert.Equal(1, count!.UnreadCount);
+        Assert.Equal(channel.Id, notification.ChannelId);
+        Assert.Equal(HttpStatusCode.OK,
+            (await member.PostAsync($"/api/notifications/{notification.Id}/read", null)).StatusCode);
+        Assert.Equal(0, (await member.GetFromJsonAsync<UnreadNotificationsResponse>(
+            "/api/notifications/unread-count", JsonOptions))!.UnreadCount);
     }
 
     private static Task<HttpResponseMessage> SendAsync(HttpClient client, Guid channelId, string content) =>

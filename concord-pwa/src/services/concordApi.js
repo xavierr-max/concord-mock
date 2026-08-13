@@ -30,4 +30,10 @@ export const concordApi = {
     accept: code => apiRequest(`/api/invites/${encodeURIComponent(code)}/accept`, { method: 'POST' }),
     remove: code => apiRequest(`/api/invites/${encodeURIComponent(code)}`, { method: 'DELETE' }),
   },
+  notifications: {
+    list: (page = 1, pageSize = 30) => apiRequest(`/api/notifications?page=${page}&pageSize=${pageSize}`),
+    unread: () => apiRequest('/api/notifications/unread-count'),
+    markRead: id => apiRequest(`/api/notifications/${id}/read`, { method: 'POST' }),
+    markAllRead: () => apiRequest('/api/notifications/read-all', { method: 'POST' }),
+  },
 }

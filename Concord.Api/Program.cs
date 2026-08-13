@@ -49,6 +49,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<ChatHub>("/hubs/chat");
 app.MapHub<VoiceHub>("/hubs/voice");
+app.MapHub<NotificationHub>("/hubs/notifications");
 app.MapHealthChecks("/health");
 
 app.Run();

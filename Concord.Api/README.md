@@ -147,3 +147,12 @@ sinal e identificadores, sem registrar SDP ou ICE candidates.
 A PWA disponibiliza `src/realtime/chatClient.js`, com os contratos de métodos/eventos,
 reentrada automática nos canais após reconexão e um controlador de digitação que aplica
 throttle de 2 segundos e debounce de 1,2 segundo por padrão.
+
+### Notificações em tempo real
+
+O `NotificationHub` autenticado está disponível em `/hubs/notifications` e entrega o evento
+`NotificationCreated` somente às conexões do destinatário. Mensagens, menções, criação e
+aceite de convites e entrada de membros geram notificações persistentes. A API oferece
+`GET /api/notifications`, `GET /api/notifications/unread-count`,
+`POST /api/notifications/{id}/read` e `POST /api/notifications/read-all`. A listagem é
+paginada e o contador é calculado diretamente no PostgreSQL.

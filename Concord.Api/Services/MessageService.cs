@@ -13,6 +13,7 @@ public sealed class MessageService(
     ConcordDbContext dbContext,
     IServerAuthorizationService authorizationService,
     IHubContext<ChatHub> hubContext,
+    INotificationService notificationService,
     IFileStorageService fileStorageService,
     IOptions<FileStorageSettings> fileStorageOptions) : IMessageService
 {
@@ -39,6 +40,7 @@ public sealed class MessageService(
         var response = await LoadResponseAsync(message.Id, cancellationToken);
         await hubContext.Clients.Group(ChatHub.GroupName(channelId))
             .SendAsync(ChatHubEvents.MessageCreated, response, cancellationToken);
+        await notificationService.CreateMessageNotificationsAsync(message.Id, cancellationToken);
         return new(MessageOperationStatus.Success, response);
     }
 

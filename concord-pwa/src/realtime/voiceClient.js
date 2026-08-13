@@ -20,6 +20,11 @@ export const VOICE_METHODS = Object.freeze({
   sendIceCandidate: 'SendIceCandidate',
 })
 
+const RECONNECT_POLICY = {
+  nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
+    [0, 2_000, 5_000, 10_000][previousRetryCount] ?? 15_000,
+}
+
 export class VoiceClientError extends Error {
   constructor(code, message, cause) {
     super(message, { cause })
@@ -55,7 +60,7 @@ export function createVoiceClient({
       accessTokenFactory: getAccessToken,
       withCredentials: false,
     })
-    .withAutomaticReconnect([0, 2_000, 5_000, 10_000])
+    .withAutomaticReconnect(RECONNECT_POLICY)
     .configureLogging(import.meta.env.DEV ? LogLevel.Information : LogLevel.Warning)
     .build()
 
@@ -116,6 +121,7 @@ export function createVoiceClient({
     peer.pc.onicecandidate = null
     peer.pc.ontrack = null
     peer.pc.onconnectionstatechange = null
+    clearTimeout(peer.recoveryTimer)
     peer.stopSpeakingMonitor?.()
     peer.pc.close()
     if (peer.audio) {
@@ -142,7 +148,7 @@ export function createVoiceClient({
     if (existing) return existing
 
     const pc = new RTCPeerConnection(rtcConfiguration)
-    const peer = { pc, pendingCandidates: [], audio: null, stopSpeakingMonitor: null }
+    const peer = { pc, pendingCandidates: [], audio: null, stopSpeakingMonitor: null, recoveryTimer: null, recovering: false }
     peers.set(userId, peer)
     localStream?.getAudioTracks().forEach((track) => pc.addTrack(track, localStream))
 
@@ -172,11 +178,22 @@ export function createVoiceClient({
     }
     pc.onconnectionstatechange = () => {
       if (pc.connectionState === 'failed') {
-        closePeer(userId)
-        if (joinedChannelId) void makeOffer(userId).catch(handleAsyncError)
+        void restartIce(userId).catch(handleAsyncError)
       }
       if (pc.connectionState === 'closed') closePeer(userId)
-      if (pc.connectionState === 'disconnected') onStatusChange('peer-disconnected')
+      if (pc.connectionState === 'connected') {
+        clearTimeout(peer.recoveryTimer)
+        peer.recoveryTimer = null
+        peer.recovering = false
+        onStatusChange('connected')
+      }
+      if (pc.connectionState === 'disconnected') {
+        onStatusChange('peer-disconnected')
+        clearTimeout(peer.recoveryTimer)
+        peer.recoveryTimer = setTimeout(() => {
+          if (pc.connectionState === 'disconnected') void restartIce(userId).catch(handleAsyncError)
+        }, 3_000)
+      }
     }
     return peer
   }
@@ -195,9 +212,29 @@ export function createVoiceClient({
     await connection.invoke(VOICE_METHODS.sendOffer, targetUserId, offer.sdp)
   }
 
+  async function restartIce(targetUserId) {
+    const peer = peers.get(targetUserId)
+    if (!peer || peer.recovering || !joinedChannelId || connection.state !== HubConnectionState.Connected) return
+    peer.recovering = true
+    clearTimeout(peer.recoveryTimer)
+    peer.recoveryTimer = null
+    try {
+      peer.pc.restartIce?.()
+      const offer = await peer.pc.createOffer({ iceRestart: true })
+      await peer.pc.setLocalDescription(offer)
+      await connection.invoke(VOICE_METHODS.sendOffer, targetUserId, offer.sdp)
+    } catch {
+      closePeer(targetUserId)
+      await makeOffer(targetUserId)
+    }
+  }
+
+  const shouldInitiate = userId => currentUserId && currentUserId.localeCompare(userId) < 0
+
   connection.on(VOICE_EVENTS.userJoined, (participant) => {
     mergeParticipant(participant)
-    if (participant.userId !== currentUserId) void makeOffer(participant.userId).catch(handleAsyncError)
+    if (participant.userId !== currentUserId && shouldInitiate(participant.userId))
+      void makeOffer(participant.userId).catch(handleAsyncError)
   })
   connection.on(VOICE_EVENTS.userUpdated, (participant) => {
     mergeParticipant(participant)
@@ -248,9 +285,12 @@ export function createVoiceClient({
   connection.onreconnected(async () => {
     if (!joinedChannelId || !localStream) return
     try {
-      const participant = await connection.invoke(VOICE_METHODS.join, joinedChannelId)
       participants.clear()
+      const participant = await connection.invoke(VOICE_METHODS.join, joinedChannelId)
       mergeParticipant(participant)
+      for (const userId of participants.keys())
+        if (userId !== currentUserId && shouldInitiate(userId))
+          await makeOffer(userId)
       reconnecting = false
       onStatusChange('connected')
     } catch (error) { handleAsyncError(error) }
@@ -303,6 +343,9 @@ export function createVoiceClient({
         joinedChannelId = channelId
         const participant = await connection.invoke(VOICE_METHODS.join, channelId)
         mergeParticipant(participant)
+        for (const userId of participants.keys())
+          if (userId !== currentUserId && shouldInitiate(userId))
+            await makeOffer(userId)
         localSpeakingMonitor = startSpeakingMonitor(currentUserId, localStream)
         onStatusChange('connected')
       } catch (error) {

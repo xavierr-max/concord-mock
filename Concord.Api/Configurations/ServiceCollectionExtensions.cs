@@ -1,4 +1,5 @@
 using Concord.Api.Data;
+using Concord.Api.Hubs;
 using Concord.Api.Models;
 using Concord.Api.Repositories;
 using Concord.Api.Services;
@@ -6,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.SignalR;
 using System.Text;
 
 namespace Concord.Api.Configurations;
@@ -56,7 +58,8 @@ public static class ServiceCollectionExtensions
                         var accessToken = context.Request.Query["access_token"];
                         if (!string.IsNullOrEmpty(accessToken) &&
                             (context.HttpContext.Request.Path.StartsWithSegments("/hubs/chat")
-                             || context.HttpContext.Request.Path.StartsWithSegments("/hubs/voice")))
+                             || context.HttpContext.Request.Path.StartsWithSegments("/hubs/voice")
+                             || context.HttpContext.Request.Path.StartsWithSegments("/hubs/notifications")))
                             context.Token = accessToken;
                         return Task.CompletedTask;
                     },
@@ -82,6 +85,7 @@ public static class ServiceCollectionExtensions
             });
         services.AddAuthorization();
         services.AddSignalR();
+        services.AddSingleton<IUserIdProvider, SubClaimUserIdProvider>();
         services.Configure<PresenceSettings>(configuration.GetSection(PresenceSettings.SectionName));
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
@@ -92,6 +96,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IChannelService, ChannelService>();
         services.AddScoped<IServerAuthorizationService, ServerAuthorizationService>();
         services.AddScoped<IMessageService, MessageService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.Configure<FileStorageSettings>(configuration.GetSection(FileStorageSettings.SectionName));
         services.AddScoped<LocalFileStorageService>();
         services.AddScoped<UnavailableFileStorageService>();
